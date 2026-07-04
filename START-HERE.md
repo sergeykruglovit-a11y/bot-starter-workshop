@@ -18,7 +18,7 @@
 
 ## Шаг 1. Открой пакет в Claude Code
 
-- Забери пакет: `git clone <ПУБЛИЧНЫЙ-HTTPS-АДРЕС>` (или скачай ZIP по ссылке от ведущего и распакуй).
+- Забери пакет: `git clone https://github.com/sergeykruglovit-a11y/bot-starter-workshop.git` (или скачай ZIP: открой [репозиторий на GitHub](https://github.com/sergeykruglovit-a11y/bot-starter-workshop) → кнопка **Code** → **Download ZIP** → распакуй).
 - Запусти **Claude Code в папке пакета**.
 
 > Настройка git и SSH-ключей **не нужна** — репозиторий публичный, забирается без ключей.
