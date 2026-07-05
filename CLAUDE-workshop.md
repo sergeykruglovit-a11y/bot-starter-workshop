@@ -55,14 +55,20 @@
 - Если у участника нет username в Telegram — подскажи задать его в настройках Telegram (иначе доступ не проверить).
 
 **Шаг 3 — workflow (создаёшь ты, `active: false`).** Ноды по порядку:
+
+> ⚠️ **Сквозная гоча n8n — линия данных.** Каждая нода перезаписывает `$json` своим выходом. После ноды **Data Table** и после HTTP-нод **AssemblyAI** в `$json` **уже нет** исходного Telegram-сообщения. Поэтому любые поля сообщения ниже по потоку (`file_id`, `chat.id`) бери **из ноды-триггера**: `{{ $('Telegram Trigger').item.json.message... }}`, а не из `$json`.
+
 1. **Telegram Trigger** — на новые сообщения (credential из Шага 1).
 2. **Фильтр «есть голосовое»** — пропускать дальше, только если у сообщения есть `message.voice`. Иначе → короткий ответ «Пришлите, пожалуйста, голосовое сообщение».
-3. **Проверка доступа** — нода Data Table «получить строки» с фильтром `telegram_username = {{ $json.message.from.username }}`; затем **IF**: строка найдена → доступ есть; не найдена → ответ «У вас нет доступа к боту».
-4. **Telegram Get File** — скачать бинарь голосового по `message.voice.file_id` (download: true). Голосовое — **бинарные данные**; веди их аккуратно: между Get File и HTTP-загрузкой не вставляй ноды, которые могут «срезать» бинарь (Set-нода, Execute Workflow) — только прямая передача бинаря дальше.
-5. **AssemblyAI — upload**: HTTP Request, `POST https://api.assemblyai.com/v2/upload`, credential AssemblyAI (Header Auth), тело — **бинарь** голосового. Из ответа взять `upload_url`.
+3. **Проверка доступа** — нода Data Table «получить строки» с фильтром `telegram_username = {{ $('Telegram Trigger').item.json.message.from.username }}`; затем **IF**: строка найдена → доступ есть; не найдена → ответ «У вас нет доступа к боту».
+   - ⚠️ **Пустой результат = ноль items.** Если по фильтру строк нет, дальше не идёт ни одного item, и ветка «нет доступа» не сработает (нечему течь). Разбери пустой случай явно: включи на ноде Data Table **«Always Output Data»** и в IF проверяй наличие/количество найденных строк. Точную механику подтверди на dry-run.
+   - ⚠️ **Регистр username.** Telegram отдаёт username в том регистре, как задал пользователь, а фильтр сравнивает точно: `Ivan` в таблице ≠ `ivan` из Telegram → «нет доступа» своему же боту. Проси хранить username точь-в-точь как в Telegram (или приводи обе стороны к нижнему регистру).
+4. **Telegram Get File** — скачать бинарь голосового по `{{ $('Telegram Trigger').item.json.message.voice.file_id }}` (download: true). Голосовое — **бинарные данные**; веди их аккуратно: между Get File и HTTP-загрузкой не вставляй ноды, которые могут «срезать» бинарь (Set-нода, Execute Workflow) — только прямая передача бинаря дальше.
+5. **AssemblyAI — upload**: HTTP Request, `POST https://api.assemblyai.com/v2/upload`, credential AssemblyAI (Header Auth), тело — **бинарь** голосового с `Content-Type: application/octet-stream` (в n8n задай тип тела «binary/raw», не multipart — иначе загрузка сломается). Из ответа взять `upload_url`.
+   - ⚠️ **EU-регион.** Если аккаунт AssemblyAI заведён в EU, база для **всех трёх** вызовов — `api.eu.assemblyai.com` (не `api.assemblyai.com`). Уточни регион у участника; при 401/непонятных ошибках это первое подозрение.
 6. **AssemblyAI — submit**: HTTP Request, `POST https://api.assemblyai.com/v2/transcript`, JSON `{ "audio_url": "{{ upload_url }}", "language_detection": true }`. Из ответа взять `id`.
-7. **Ожидание + опрос**: **Wait** (напр. 3–5 сек) → HTTP Request `GET https://api.assemblyai.com/v2/transcript/{{ id }}`. Если `status` не `completed` и не `error` — вернуться на Wait (цикл). `completed` → берём `text`; `error` → вежливое сообщение об ошибке.
-8. **Telegram Send Message** — `chatId = {{ $json.message.chat.id }}`, текст = распознанный `text`. (Telegram по умолчанию отправляет текст как Markdown — спецсимволы `_`, `*` в распознанном тексте могут его сломать; отправляй обычным текстом или задай `parse_mode` явно.)
+7. **Ожидание + опрос**: **Wait** (напр. 3–5 сек) → HTTP Request `GET https://api.assemblyai.com/v2/transcript/{{ id }}`. Если `status` не `completed` и не `error` — вернуться на Wait (цикл). `completed` → берём `text`; `error` → вежливое сообщение об ошибке. Добавь **предохранитель от вечного цикла**: ограничь число опросов (напр. ≤10) — если не завершилось, выходи с сообщением «не удалось распознать, попробуйте ещё раз».
+8. **Telegram Send Message** — `chatId = {{ $('Telegram Trigger').item.json.message.chat.id }}` (⚠️ **НЕ** `$json.message.chat.id` — к этому шагу `$json` = ответ AssemblyAI, сообщения в нём нет). Текст = распознанный `{{ $json.text }}`. (Telegram по умолчанию отправляет текст как Markdown — спецсимволы `_`, `*` в распознанном тексте могут его сломать; отправляй обычным текстом или задай `parse_mode` явно.)
 
 **Шаг 4 — активация и тест (делает участник).** Участник **сам** активирует workflow в UI (это регистрирует Telegram-webhook) и шлёт боту голосовое. Ты помогаешь прочитать результат execution через n8n-mcp и разобрать, если что-то не так.
 
