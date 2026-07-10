@@ -7,7 +7,7 @@
         "MCP_MODE": "stdio",
         "LOG_LEVEL": "error",
         "DISABLE_CONSOLE_OUTPUT": "true",
-        "N8N_API_URL": "https://<ваш-n8n-хост>",
+        "N8N_API_URL": "https://<ваш-субдомен>.app.n8n.cloud",
         "N8N_API_KEY": "ВСТАВИТЬ_КЛЮЧ_ЗДЕСЬ"
       }
     }
